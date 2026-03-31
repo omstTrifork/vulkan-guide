@@ -109,7 +109,7 @@ private:
     void initWindow()
     {
         if (!glfwInit())
-            throw std::runtime_error("Failed to initialise GLFW");
+            throw std::runtime_error("Failed to initialize GLFW");
 
         // Tell GLFW not to create an OpenGL context – we want Vulkan.
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
