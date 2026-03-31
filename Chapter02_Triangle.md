@@ -1,3 +1,6 @@
+---
+render_with_liquid: false
+---
 # Chapter 2: Hello, Triangle!
 
 The original gltut **[Tutorial 01 – Hello, Triangle!](https://paroj.github.io/gltut/Basics/Tut01%20Following%20the%20Data.html)** draws a single white triangle to the screen. The program defines three vertex positions on the CPU, uploads them to the GPU, writes a tiny vertex shader and fragment shader in GLSL, and issues a single draw call. That is the minimum viable OpenGL program.
