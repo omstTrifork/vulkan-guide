@@ -3,45 +3,15 @@ render_with_liquid: false
 ---
 # Chapter 2: Hello, Triangle!
 
-The original gltut **[Tutorial 01 – Hello, Triangle!](https://paroj.github.io/gltut/Basics/Tut01%20Following%20the%20Data.html)** draws a single white triangle to the screen. The program defines three vertex positions on the CPU, uploads them to the GPU, writes a tiny vertex shader and fragment shader in GLSL, and issues a single draw call. That is the minimum viable OpenGL program.
+This chapter draws a single white triangle to the screen. The program defines three vertex positions on the CPU, uploads them to the GPU, writes a vertex shader and a fragment shader in GLSL, and issues a single draw call. This is the minimum viable Vulkan program.
 
-This chapter does the same thing in Vulkan. Chapter 1 created the `VkInstance` — the very first step. Now we add the remaining eight steps and watch the triangle appear for the first time.
-
----
-
-## The Rosetta Stone: Chapter 2
-
-The table below maps every concept from gltut Tutorial 01 to its Vulkan 1.4 counterpart.
-
-| Concept | OpenGL / FreeGLUT (gltut Tut 01) | Vulkan 1.4 (Our Guide) |
-| :--- | :--- | :--- |
-| **Instance / context** | Implicit OpenGL context created by FreeGLUT | `VkInstance` (Chapter 1) |
-| **GPU selection** | Driver picks the default GPU silently | `vkEnumeratePhysicalDevices` → score and select a `VkPhysicalDevice` |
-| **Queue families** | Hidden inside the driver | Explicitly query `vkGetPhysicalDeviceQueueFamilyProperties`; find a graphics queue and a present queue |
-| **Logical device** | Part of the implicit context | `vkCreateDevice` — creates `VkDevice` and retrieves `VkQueue` handles |
-| **Window surface** | FreeGLUT owns the window and drawable surface | `glfwCreateWindowSurface` → `VkSurfaceKHR`; links the Vulkan Instance to the OS window |
-| **Swap chain** | FreeGLUT's hidden double-buffer | `vkCreateSwapchainKHR` → `VkSwapchainKHR`; you choose the format, present mode, and extent |
-| **Image views** | No concept (textures are bound by handle) | `vkCreateImageView` — describes how to interpret each swap-chain image |
-| **Render pass** | Implicit framebuffer operations | `vkCreateRenderPass` — declares attachments, sub-passes, and load/store ops |
-| **Vertex data** | `const float vertexPositions[]` on the CPU | Same CPU array copied into a `VkBuffer` backed by `VkDeviceMemory` |
-| **GPU buffer allocation** | `glGenBuffers` / `glBindBuffer` / `glBufferData` | `vkCreateBuffer` → `vkAllocateMemory` → `vkBindBufferMemory` → `vkMapMemory` + `memcpy` |
-| **Vertex layout** | `glVertexAttribPointer(0, 4, GL_FLOAT, …)` | `VkVertexInputBindingDescription` + `VkVertexInputAttributeDescription` |
-| **Vertex shader** | GLSL text, compiled at runtime by the driver | GLSL compiled offline to SPIR-V with `glslc`; loaded via `vkCreateShaderModule` |
-| **Fragment shader** | `out vec4 outputColor; outputColor = vec4(1,1,1,1);` | Same GLSL logic, compiled to SPIR-V |
-| **Pipeline assembly** | `glCreateProgram` / `glAttachShader` / `glLinkProgram` | `vkCreateGraphicsPipelines` — a single call that wires shaders + all fixed-function state |
-| **Framebuffers** | Implicit (FreeGLUT manages the default framebuffer) | `vkCreateFramebuffer` — one per swap-chain image, referencing the render pass |
-| **Command recording** | API calls happen immediately in the display callback | `vkBeginCommandBuffer` … `vkCmdDraw` … `vkEndCommandBuffer` — deferred recording |
-| **Command submission** | No concept (GL commands are submitted implicitly) | `vkQueueSubmit` — hands a `VkCommandBuffer` to the GPU |
-| **Synchronisation** | Driver-managed; no explicit sync needed | `VkSemaphore` (GPU–GPU) + `VkFence` (GPU→CPU) for every frame |
-| **Draw call** | `glDrawArrays(GL_TRIANGLES, 0, 3)` | `vkCmdDraw(cmd, 3, 1, 0, 0)` |
-| **Present** | `glutSwapBuffers()` | `vkQueuePresentKHR(presentQueue, &presentInfo)` |
-| **Cleanup** | `glutDestroyWindow()` + implicit teardown | Explicit destroy for every object, in reverse creation order |
+Chapter 1 created the `VkInstance` — the very first step. This chapter adds the remaining eight steps and produces the triangle.
 
 ---
 
 ## Following the Data
 
-In gltut Tutorial 01 the author traces how vertex data travels from a CPU array all the way to pixels on screen. Vulkan follows the same data path; it simply makes every step visible.
+The goal of this chapter is to understand how vertex data travels from a CPU array all the way to pixels on screen. Vulkan makes every step in that journey explicit.
 
 ```
 CPU array  →  VkBuffer (vertex buffer)  →  vertex shader  →  fragment shader  →  VkImage (swap-chain)  →  screen
@@ -55,7 +25,7 @@ The pipeline in between contains:
 4. **Fragment shader** — assigns a colour to each fragment.
 5. **Output-merger** (colour blend / depth test) — writes the fragment to the framebuffer attachment.
 
-OpenGL configures each of these stages with separate function calls spread across your program. Vulkan bakes them all into a single immutable `VkPipeline` object at creation time.
+All of these stages are baked into a single immutable `VkPipeline` object at creation time.
 
 ---
 
@@ -63,7 +33,7 @@ OpenGL configures each of these stages with separate function calls spread acros
 
 ### Step 1 — Physical Device Selection
 
-OpenGL's driver silently picks a GPU. In Vulkan you enumerate all available GPUs and choose the one you want.
+Vulkan lets you enumerate all available GPUs and choose the one you want.
 
 ```cpp
 uint32_t deviceCount = 0;
@@ -144,7 +114,7 @@ vkGetDeviceQueue(device, presentFamily,  0, &presentQueue);
 
 ### Step 4 — Window Surface
 
-A `VkSurfaceKHR` connects the Vulkan instance to the native window managed by GLFW. This is the Vulkan equivalent of the OpenGL drawable surface that FreeGLUT creates implicitly.
+A `VkSurfaceKHR` connects the Vulkan instance to the native window managed by GLFW.
 
 ```cpp
 VkSurfaceKHR surface;
@@ -154,7 +124,7 @@ if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
 
 ### Step 5 — Swap Chain
 
-The swap chain is Vulkan's double-buffered display mechanism — the equivalent of FreeGLUT's hidden back buffer and `glutSwapBuffers`. You explicitly choose the surface format (e.g. `VK_FORMAT_B8G8R8A8_SRGB`), the present mode (e.g. `VK_PRESENT_MODE_FIFO_KHR` for vsync), and the image extent (window resolution).
+The swap chain is Vulkan's double-buffered display mechanism. You explicitly choose the surface format (e.g. `VK_FORMAT_B8G8R8A8_SRGB`), the present mode (e.g. `VK_PRESENT_MODE_FIFO_KHR` for vsync), and the image extent (window resolution).
 
 ```cpp
 VkSwapchainCreateInfoKHR swapInfo{};
@@ -198,13 +168,13 @@ for (VkImage img : swapChainImages) {
 
 ### Step 7 — Render Pass
 
-A render pass describes the attachments (colour, depth, stencil) that the GPU renders into, along with what happens to them at the start (`VK_ATTACHMENT_LOAD_OP_CLEAR` = glClear equivalent) and end (`VK_ATTACHMENT_STORE_OP_STORE` = keep the result for presentation) of the pass.
+A render pass describes the attachments (colour, depth, stencil) that the GPU renders into, along with what happens to them at the start (`VK_ATTACHMENT_LOAD_OP_CLEAR` = clear the image) and end (`VK_ATTACHMENT_STORE_OP_STORE` = keep the result for presentation) of the pass.
 
 ```cpp
 VkAttachmentDescription colorAttachment{};
 colorAttachment.format         = swapChainImageFormat;
 colorAttachment.samples        = VK_SAMPLE_COUNT_1_BIT;
-colorAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;   // glClear
+colorAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;   // clear on begin
 colorAttachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;  // keep
 colorAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -231,9 +201,9 @@ vkCreateRenderPass(device, &rpInfo, nullptr, &renderPass);
 
 ### Step 8 — Shaders
 
-The gltut vertex shader passes positions straight through to clip space; the fragment shader outputs solid white. In Vulkan the GLSL source is identical — but instead of the driver compiling it at runtime, you use `glslc` offline to produce a SPIR-V binary.
+The vertex shader passes positions straight through to clip space; the fragment shader outputs solid white. Shaders are written in GLSL and compiled offline to SPIR-V using `glslc` before your application loads them.
 
-**vert.glsl** (identical to gltut Tutorial 01):
+**vert.glsl**:
 ```glsl
 #version 450
 layout(location = 0) in vec4 position;
@@ -242,7 +212,7 @@ void main() {
 }
 ```
 
-**frag.glsl** (identical to gltut Tutorial 01):
+**frag.glsl**:
 ```glsl
 #version 450
 layout(location = 0) out vec4 outColor;
@@ -288,7 +258,7 @@ VkShaderModule fragModule = makeModule(fragCode);
 
 ### Step 9 — Graphics Pipeline
 
-In OpenGL you link a program with `glLinkProgram`. In Vulkan all fixed-function state is also part of the pipeline object — topology, viewport, rasterizer, colour blend, etc. This verbosity is the trade-off for zero driver surprises at draw time.
+In Vulkan all fixed-function state is part of the pipeline object — topology, viewport, rasterizer, colour blend, etc. Creating it all at once enables the driver to fully optimise the pipeline upfront, with no surprises at draw time.
 
 ```cpp
 // Shader stages
@@ -302,7 +272,7 @@ stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
 stages[1].module = fragModule;
 stages[1].pName  = "main";
 
-// Vertex input — matches glVertexAttribPointer(0, 4, GL_FLOAT, ...)
+// Vertex input — one binding, one vec4 attribute at location 0
 VkVertexInputBindingDescription binding{};
 binding.binding   = 0;
 binding.stride    = 4 * sizeof(float); // vec4
@@ -321,12 +291,12 @@ vertexInput.pVertexBindingDescriptions      = &binding;
 vertexInput.vertexAttributeDescriptionCount = 1;
 vertexInput.pVertexAttributeDescriptions    = &attr;
 
-// Input assembly — GL_TRIANGLES equivalent
+// Input assembly — triangle list topology
 VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 inputAssembly.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-// Viewport and scissor — glViewport equivalent
+// Viewport and scissor
 VkViewport viewport{0, 0, 800, 600, 0.0f, 1.0f};
 VkRect2D   scissor{{0, 0}, {800, 600}};
 VkPipelineViewportStateCreateInfo viewportState{};
@@ -365,7 +335,7 @@ layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 VkPipelineLayout pipelineLayout;
 vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout);
 
-// Assemble the pipeline — equivalent of glLinkProgram + all glEnable/glBlend calls
+// Assemble the pipeline
 VkGraphicsPipelineCreateInfo pipelineInfo{};
 pipelineInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 pipelineInfo.stageCount          = 2;
@@ -406,10 +376,9 @@ for (size_t i = 0; i < swapChainImageViews.size(); ++i) {
 
 ### Step 11 — Vertex Data and Vertex Buffer
 
-The gltut triangle uses this data (four-component positions in clip space):
+The triangle uses three four-component positions in clip space:
 
 ```cpp
-// Identical to gltut Tutorial 01 vertexPositions[]
 const float vertexData[] = {
      0.0f,  0.5f,  0.0f,  1.0f,   // top
     -0.5f, -0.5f,  0.0f,  1.0f,   // bottom-left
@@ -417,7 +386,7 @@ const float vertexData[] = {
 };
 ```
 
-In OpenGL you call `glBufferData` and the driver copies the data to the GPU. In Vulkan you do it explicitly:
+To make this data available to the GPU, you create a `VkBuffer`, allocate `VkDeviceMemory`, bind them together, and then copy the data in via `vkMapMemory`:
 
 ```cpp
 VkBufferCreateInfo bufInfo{};
@@ -443,7 +412,7 @@ VkDeviceMemory vertexBufferMemory;
 vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory);
 vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
 
-// Copy vertex data — equivalent of glBufferData
+// Map the memory and copy the vertex data into it.
 void* data;
 vkMapMemory(device, vertexBufferMemory, 0, sizeof(vertexData), 0, &data);
 memcpy(data, vertexData, sizeof(vertexData));
@@ -452,7 +421,7 @@ vkUnmapMemory(device, vertexBufferMemory);
 
 ### Step 12 — Command Pool and Command Buffers
 
-OpenGL executes commands immediately when you call them. Vulkan records commands into a `VkCommandBuffer` first, then submits the whole buffer to the GPU in one shot. This allows multi-threaded recording and efficient GPU scheduling.
+Vulkan records commands into a `VkCommandBuffer` first, then submits the whole buffer to the GPU in one shot. This allows multi-threaded recording and efficient GPU scheduling.
 
 ```cpp
 VkCommandPoolCreateInfo poolInfo{};
@@ -482,7 +451,7 @@ for (size_t i = 0; i < commandBuffers.size(); ++i) {
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(commandBuffers[i], &beginInfo);
 
-    // Begin render pass — equivalent of glClearColor + glClear
+    // Begin render pass — clears the framebuffer to the specified colour.
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
     VkRenderPassBeginInfo rpBegin{};
     rpBegin.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -500,7 +469,7 @@ for (size_t i = 0; i < commandBuffers.size(); ++i) {
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, &vertexBuffer, &offset);
 
-    // Draw call — equivalent of glDrawArrays(GL_TRIANGLES, 0, 3)
+    // Draw 3 vertices as a triangle.
     vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
 
     vkCmdEndRenderPass(commandBuffers[i]);
@@ -524,7 +493,7 @@ vkCreateSemaphore(device, &semInfo, nullptr, &imageAvailable);
 vkCreateSemaphore(device, &semInfo, nullptr, &renderFinished);
 vkCreateFence(device,     &fenceInfo, nullptr, &inFlightFence);
 
-// Main loop — equivalent of glutMainLoop
+// Main render loop
 while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
 
@@ -550,7 +519,7 @@ while (!glfwWindowShouldClose(window)) {
     submitInfo.pSignalSemaphores    = &renderFinished;
     vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
 
-    // Present the rendered image — equivalent of glutSwapBuffers()
+    // Present the rendered image to the screen.
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
@@ -567,7 +536,7 @@ vkDeviceWaitIdle(device);
 
 ## Cleanup
 
-Every Vulkan object must be destroyed in reverse creation order. This replaces OpenGL's implicit teardown on context destruction.
+Every Vulkan object must be destroyed in reverse creation order.
 
 ```cpp
 vkDestroyFence(device, inFlightFence, nullptr);
@@ -595,7 +564,7 @@ glfwTerminate();
 
 ## The Complete Code
 
-See [`code/Chapter02/main.cpp`](./code/Chapter02/main.cpp) for the full self-contained implementation that combines Chapters 1 and 2 into a program that opens a window and renders a white triangle, exactly like gltut Tutorial 01.
+See [`code/Chapter02/main.cpp`](./code/Chapter02/main.cpp) for the full self-contained implementation that combines Chapters 1 and 2 into a program that opens a window and renders a white triangle.
 
 ---
 
