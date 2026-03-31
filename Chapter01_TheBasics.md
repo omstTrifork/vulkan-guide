@@ -1,4 +1,4 @@
-# Chapter 1: Hello, Triangle!
+# Chapter 1: The Basics — Creating a Vulkan Instance
 
 The original gltut **[Tutorial 01 – Hello, Triangle!](https://github.com/paroj/gltut/blob/master/Documents/Basics/Tutorial%2001.xml)** draws a single white triangle to the screen using FreeGLUT for windowing, a hand-written GLSL vertex and fragment shader, a Vertex Buffer Object (VBO) for the position data, and `glDrawArrays` to issue the draw call. It is the minimum viable OpenGL program.
 
@@ -68,4 +68,4 @@ Without these two items, `vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVE
 See [`code/Chapter01/main.cpp`](./code/Chapter01/main.cpp) for the implementation of step 1: creating a Vulkan 1.4 Instance with GLFW and all macOS portability extensions enabled.
 
 ---
-[← Introduction](./Introduction.html) | [Chapter 2: The Triangle →](./Chapter02_Triangle.html) *(coming soon)*
+[← Introduction](./Introduction.html) | [Chapter 2: Hello, Triangle! →](./Chapter02_Triangle.html)
